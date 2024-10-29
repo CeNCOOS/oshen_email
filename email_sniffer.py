@@ -12,7 +12,15 @@ from email.mime.text import MIMEText
 from email.message import EmailMessage
 import re
 import pdb
+from decode_satellite_message import unpack_data, bpFormat
 #Fri May 24 15:51:32 2019
+
+
+def decode_hex_message(hex_data):
+    binary_data = bytes.fromhex(hex_data)
+    unpacked_data = unpack_data(binary_data, bpFormat)
+
+    return unpacked_data['Latitude'],unpacked_data['Longitude'],unpacked_data['Timestamp']
 
 class EmailSniffer():
 
@@ -51,6 +59,9 @@ class EmailSniffer():
         self._threadL.setDaemon(True)
         self._threadL.start()
 
+    
+
+
     def _listen(self):
         print('Listen thread started')
         while self.alive:
@@ -87,33 +98,34 @@ class EmailSniffer():
 
                     mail = email.message_from_string((data[0][1]).decode('utf-8'))
                     #
+                    
                     junk=data[0][1].decode('utf-8')
-                    latindex=[m.start() for m in re.finditer('Latitude:',junk)]
-                    lonindex=[m.start() for m in re.finditer('Longitude:',junk)]
-                    dateindex=[m.start() for m in re.finditer('Date:',junk)]
-                    latitude=junk[latindex[0]+10:latindex[0]+17]
-                    longitude=junk[lonindex[0]+11:lonindex[0]+20]
-                    adates=junk[dateindex[1]+11:dateindex[1]+31]
-                    adateobj=datetime.datetime.strptime(adates,'%d %b %Y %H:%M:%S')
-                    offset=datetime.datetime(1970,1,1)
-                    timeformail=(adateobj-offset).total_seconds()
-                    # this is the code to send to ODSS
-                    # commented out for now
-                    #if (longitude < -121.7885) and (longitude > -122.166):
-                    mymsg=EmailMessage()
-                    mymsg['Subject']='Emperor,'+str(timeformail)+','+str(longitude)+','+str(latitude)
-                    mymsg['From']='flbahr@mbari.org'
-                    mymsg['To']='auvtrack@mbari.org'
-                    mymsgtxt='Emperor,'+str(timeformail)+','+str(longitude)+','+str(latitude)
-                    mymsg.set_payload(mymsgtxt)
-                    stest=smtplib.SMTP('localhost')
-                    stest.send_message(mymsg)
-                    stest.quit()
-                    # mail message to tracking database
-                    # To: auvtrack@mbari.org
-                    # From: usv_track
-                    # Subject:Emporor,time,long,lat
-                    # body Emporor,time,lon,lat
+                    
+                    hex_data_match = re.search(r'Data:\s*([0-9a-fA-F]+)', junk)
+                    if hex_data_match:
+                        hex_data = hex_data_match.group(1)
+                        decoded_lat, decoded_lon, decoded_time = decode_hex_message(hex_data)
+                        latitude = decoded_lat
+                        longitude = decoded_lon
+                        timeformail = datetime.datetime.utcfromtimestamp(decoded_time)
+
+                        # this is the code to send to ODSS
+                        # commented out for now
+                        #if (longitude < -121.7885) and (longitude > -122.166):
+                        mymsg=EmailMessage()
+                        mymsg['Subject']='Emperor,'+str(timeformail)+','+str(longitude)+','+str(latitude)
+                        mymsg['From']='flbahr@mbari.org'
+                        mymsg['To']='auvtrack@mbari.org'
+                        mymsgtxt='Emperor,'+str(timeformail)+','+str(longitude)+','+str(latitude)
+                        mymsg.set_payload(mymsgtxt)
+                        stest=smtplib.SMTP('localhost')
+                        stest.send_message(mymsg)
+                        stest.quit()
+                        # mail message to tracking database
+                        # To: auvtrack@mbari.org
+                        # From: usv_track
+                        # Subject:Emporor,time,long,lat
+                        # body Emporor,time,lon,lat
                     
 
                     if not mail.is_multipart():
